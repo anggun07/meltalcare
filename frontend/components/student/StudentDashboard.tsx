@@ -1,12 +1,24 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { Activity, Brain, CheckCircle, TrendingUp, Clock, ArrowRight } from "lucide-react";
-import { heartRateData, studentTestHistory } from "../shared/mockData";
+import { Activity, Brain, CheckCircle, TrendingUp, Clock, ArrowRight, X } from "lucide-react";
+import { heartRateData } from "../shared/mockData";
 import { StressBadge } from "../shared/StressBadge";
+import { getCurrentUser, CurrentUser } from "@/lib/auth";
+import { apiRequest } from "@/lib/api";
+import { MentalHealthTestApi, TestRecord, toTestRecord } from "@/lib/mental-health";
+
+function formatTestDate(date: string) {
+  return new Date(date).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -24,21 +36,67 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export function StudentDashboard() {
   const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [testHistory, setTestHistory] = useState<TestRecord[]>([]);
+  const [testsLoading, setTestsLoading] = useState(true);
+  const [testsError, setTestsError] = useState("");
+  const [selectedTest, setSelectedTest] = useState<TestRecord | null>(null);
+
+  useEffect(() => {
+    const user = getCurrentUser();
+    setCurrentUser(user);
+
+    const loadTests = async () => {
+      const studentId = user?.student?.id;
+
+      if (!studentId) {
+        setTestsError("Data mahasiswa tidak ditemukan. Silakan login ulang.");
+        setTestsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await apiRequest<{ data: MentalHealthTestApi[] }>(
+          `/students/${studentId}/mental-health-tests`,
+        );
+        setTestHistory(response.data.map(toTestRecord));
+      } catch (error) {
+        setTestsError(error instanceof Error ? error.message : "Gagal mengambil riwayat tes.");
+      } finally {
+        setTestsLoading(false);
+      }
+    };
+
+    loadTests();
+  }, []);
+
+  const latestTest = testHistory[0];
+  const now = new Date();
+  const testsThisMonth = testHistory.filter((test) => {
+    const testedAt = new Date(test.date);
+    return testedAt.getMonth() === now.getMonth() && testedAt.getFullYear() === now.getFullYear();
+  }).length;
+
+  const latestStatusStyle = latestTest?.category === "Stres Berat"
+    ? { color: "#EF4444", bg: "#FEF2F2", border: "#FCA5A5" }
+    : latestTest?.category === "Stres Ringan"
+      ? { color: "#F59E0B", bg: "#FFFBEB", border: "#FCD34D" }
+      : latestTest
+        ? { color: "#10B981", bg: "#ECFDF5", border: "#A7F3D0" }
+        : { color: "#6B7280", bg: "#F9FAFB", border: "#E5E7EB" };
 
   const summaryCards = [
     {
       label: "Status Terakhir",
-      value: "Tidak Stres",
-      sub: "Tes terakhir: 01 Mar 2026",
+      value: testsLoading ? "Memuat..." : latestTest?.category || "Belum Ada Tes",
+      sub: latestTest ? `Tes terakhir: ${formatTestDate(latestTest.date)}` : "Belum ada hasil tes tersimpan",
       icon: CheckCircle,
-      color: "#10B981",
-      bg: "#ECFDF5",
-      border: "#A7F3D0",
+      ...latestStatusStyle,
     },
     {
       label: "Total Tes Dilakukan",
-      value: "8",
-      sub: "+1 bulan ini",
+      value: testsLoading ? "-" : String(testHistory.length),
+      sub: `${testsThisMonth} tes bulan ini`,
       icon: Brain,
       color: "#1E6CB5",
       bg: "#EFF6FF",
@@ -66,7 +124,7 @@ export function StudentDashboard() {
         <div className="absolute bottom-0 right-20 w-24 h-24 rounded-full opacity-10 bg-white translate-y-12" />
         <div className="relative z-10">
           <p className="text-blue-200 text-sm mb-1" style={{ fontWeight: 400 }}>Selamat datang kembali 👋</p>
-          <h1 className="text-white text-xl mb-2" style={{ fontWeight: 700 }}>Ahmad Fauzi</h1>
+          <h1 className="text-white text-xl mb-2" style={{ fontWeight: 700 }}>{currentUser?.name || "Mahasiswa"}</h1>
           <p className="text-blue-100 text-sm mb-4" style={{ fontWeight: 400 }}>
             Pantau kondisi kesehatan mental kamu secara rutin untuk performa akademik yang optimal.
           </p>
@@ -79,6 +137,12 @@ export function StudentDashboard() {
           </button>
         </div>
       </div>
+
+      {testsError && (
+        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">
+          {testsError}
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -165,7 +229,9 @@ export function StudentDashboard() {
         <div className="flex items-center justify-between p-5 border-b border-gray-50">
           <div>
             <h3 className="text-gray-800 text-base" style={{ fontWeight: 700 }}>Riwayat Tes Terbaru</h3>
-            <p className="text-gray-400 text-xs mt-0.5" style={{ fontWeight: 400 }}>5 tes terakhir</p>
+            <p className="text-gray-400 text-xs mt-0.5" style={{ fontWeight: 400 }}>
+              {testsLoading ? "Memuat data..." : `${Math.min(testHistory.length, 5)} tes terakhir`}
+            </p>
           </div>
           <button
             onClick={() => router.push("/student/history")}
@@ -186,25 +252,33 @@ export function StudentDashboard() {
               </tr>
             </thead>
             <tbody>
-              {studentTestHistory.slice(0, 5).map((test, idx) => (
+              {!testsLoading && testHistory.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-400">
+                    Belum ada riwayat tes kesehatan mental.
+                  </td>
+                </tr>
+              )}
+              {testHistory.slice(0, 5).map((test, idx) => (
                 <tr key={test.id} className={`border-t border-gray-50 hover:bg-blue-50/30 transition-colors ${idx % 2 === 0 ? "" : "bg-gray-50/30"}`}>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2">
                       <Clock className="w-3.5 h-3.5 text-gray-300" />
                       <span className="text-sm text-gray-700" style={{ fontWeight: 500 }}>
-                        {new Date(test.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                        {formatTestDate(test.date)}
                       </span>
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className="text-sm" style={{ fontWeight: 700, color: "#1A3A8F" }}>{test.score}</span>
-                    <span className="text-xs text-gray-400 ml-1" style={{ fontWeight: 400 }}>/30</span>
+                    <span className="text-xs text-gray-400 ml-1" style={{ fontWeight: 400 }}>/{test.maxScore}</span>
                   </td>
                   <td className="px-5 py-3.5">
                     <StressBadge category={test.category} size="sm" />
                   </td>
                   <td className="px-5 py-3.5">
                     <button
+                      onClick={() => setSelectedTest(test)}
                       className="text-xs px-3 py-1 rounded-lg transition-colors"
                       style={{ background: "#EFF6FF", color: "#1E6CB5", fontWeight: 500 }}
                     >
@@ -217,6 +291,59 @@ export function StudentDashboard() {
           </table>
         </div>
       </div>
+
+      {selectedTest && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelectedTest(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-800">Detail Hasil Tes</h3>
+              <button
+                onClick={() => setSelectedTest(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 hover:bg-gray-200"
+                aria-label="Tutup detail"
+              >
+                <X className="h-4 w-4 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-5 text-center">
+              <p className="text-4xl font-extrabold text-blue-800">{selectedTest.score}</p>
+              <p className="mb-3 text-xs text-gray-500">Skor total /{selectedTest.maxScore}</p>
+              <StressBadge category={selectedTest.category} />
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between border-b border-gray-100 py-2">
+                <span className="text-gray-500">Tanggal Tes</span>
+                <span className="font-semibold text-gray-800">{formatTestDate(selectedTest.date)}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-100 py-2">
+                <span className="text-gray-500">Kategori</span>
+                <span className="font-semibold text-gray-800">{selectedTest.category}</span>
+              </div>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-gray-500">Persentase Skor</span>
+                <span className="font-semibold text-blue-800">
+                  {Math.round((selectedTest.score / selectedTest.maxScore) * 100)}%
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedTest(null)}
+              className="mt-5 w-full rounded-xl bg-blue-700 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

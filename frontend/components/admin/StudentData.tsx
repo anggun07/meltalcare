@@ -1,9 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Users, X, ChevronLeft, ChevronRight, Mail, BookOpen, Eye } from "lucide-react";
-import { students, Student } from "../shared/mockData";
 import { StressBadge } from "../shared/StressBadge";
+import { apiRequest } from "@/lib/api";
+import { initials, StressLevel, StudentApi } from "@/lib/mental-health";
+
+interface Student {
+  id: number;
+  name: string;
+  email: string;
+  nim: string;
+  totalTests: number;
+  lastStatus: StressLevel | null;
+  avatar: string;
+}
 
 interface StudentDetailModalProps {
   student: Student;
@@ -16,7 +27,9 @@ function StudentDetailModal({ student, onClose }: StudentDetailModalProps) {
     "Stres Ringan": { color: "#F59E0B", bg: "#FFFBEB", border: "#FCD34D" },
     "Stres Berat": { color: "#EF4444", bg: "#FEF2F2", border: "#FCA5A5" },
   };
-  const colors = colorMap[student.lastStatus];
+  const colors = student.lastStatus
+    ? colorMap[student.lastStatus]
+    : { color: "#64748B", bg: "#F8FAFC", border: "#CBD5E1" };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -46,7 +59,7 @@ function StudentDetailModal({ student, onClose }: StudentDetailModalProps) {
           style={{ background: colors.bg, borderColor: colors.border }}
         >
           <span className="text-sm text-gray-600" style={{ fontWeight: 500 }}>Status Terakhir</span>
-          <StressBadge category={student.lastStatus} size="sm" />
+          {student.lastStatus ? <StressBadge category={student.lastStatus} size="sm" /> : <span className="text-xs text-gray-500">Belum Ada Tes</span>}
         </div>
 
         {/* Details */}
@@ -80,11 +93,37 @@ function StudentDetailModal({ student, onClose }: StudentDetailModalProps) {
 }
 
 export function StudentData() {
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const perPage = 5;
+
+  useEffect(() => {
+    const loadStudents = async () => {
+      try {
+        const response = await apiRequest<{ data: StudentApi[] }>("/students");
+        setStudents(response.data.map((student) => ({
+          id: student.id,
+          name: student.name || student.user.name,
+          email: student.user.email,
+          nim: student.nim,
+          totalTests: student.mental_health_tests_count || 0,
+          lastStatus: student.mental_health_tests[0]?.category || null,
+          avatar: initials(student.name || student.user.name),
+        })));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gagal mengambil data mahasiswa.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStudents();
+  }, []);
 
   const filtered = students.filter((s) => {
     const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.email.toLowerCase().includes(search.toLowerCase()) || s.nim.includes(search);
@@ -108,6 +147,8 @@ export function StudentData() {
         <h2 className="text-gray-800 text-xl" style={{ fontWeight: 700 }}>Data Mahasiswa</h2>
         <p className="text-gray-400 text-sm mt-0.5" style={{ fontWeight: 400 }}>Kelola data dan pantau status mahasiswa</p>
       </div>
+
+      {error && <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">{error}</div>}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -174,7 +215,11 @@ export function StudentData() {
               </tr>
             </thead>
             <tbody>
-              {paginated.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-gray-400">Memuat data mahasiswa...</td>
+                </tr>
+              ) : paginated.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-12 text-gray-400">
                     <Users className="w-10 h-10 mx-auto mb-2 text-gray-200" />
@@ -209,7 +254,7 @@ export function StudentData() {
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      <StressBadge category={student.lastStatus} size="sm" />
+                      {student.lastStatus ? <StressBadge category={student.lastStatus} size="sm" /> : <span className="text-xs text-gray-400">Belum Ada Tes</span>}
                     </td>
                     <td className="px-5 py-4">
                       <button

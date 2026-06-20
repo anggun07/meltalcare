@@ -9,8 +9,22 @@ class Student extends Model
     protected $fillable = [
         'user_id',
         'nim',
-        'name'
+        'name',
+        'phone',
+        'birth_date',
+        'faculty',
+        'study_program',
+        'semester',
+        'address',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'birth_date' => 'date:Y-m-d',
+            'semester' => 'integer',
+        ];
+    }
 
     public function user()
     {
@@ -20,5 +34,10 @@ class Student extends Model
     public function heartRates()
     {
         return $this->hasMany(HeartRate::class);
+    }
+
+    public function mentalHealthTests()
+    {
+        return $this->hasMany(MentalHealthTest::class);
     }
 }

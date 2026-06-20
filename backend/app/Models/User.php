@@ -52,4 +52,19 @@ class User extends Authenticatable
     {
         return $this->hasOne(Student::class);
     }
+
+    public function settings()
+    {
+        return $this->hasOne(UserSetting::class);
+    }
+
+    public function adminProfile()
+    {
+        return $this->hasOne(AdminProfile::class);
+    }
+
+    public function adminSettings()
+    {
+        return $this->hasOne(AdminSetting::class);
+    }
 }

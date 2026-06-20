@@ -15,6 +15,9 @@ import {
   ChevronRight,
   Shield,
 } from "lucide-react";
+import { clearSession, getCurrentUser, getInitials, CurrentUser } from "@/lib/auth";
+import { apiRequest } from "@/lib/api";
+import { DashboardData, MentalHealthTestApi } from "@/lib/mental-health";
 const logoImg = "/logo.svg";
 
 const menuItems = [
@@ -29,11 +32,64 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationRead, setNotificationRead] = useState(false);
+  const [recentTests, setRecentTests] = useState<MentalHealthTestApi[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [jakartaDate, setJakartaDate] = useState("");
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
 
-  const handleLogout = () => router.push("/");
+  const handleLogout = () => {
+    clearSession();
+    router.push("/login");
+  };
   const isActive = (path: string) =>
     pathname === path || (pathname === "/admin" && path === "/admin/dashboard");
+
+  useEffect(() => {
+    const syncCurrentUser = () => {
+      const user = getCurrentUser();
+
+      if (!user || user.role !== "admin") {
+        clearSession();
+        router.replace("/login");
+        return;
+      }
+
+      setCurrentUser(user);
+      setCheckingAuth(false);
+    };
+
+    syncCurrentUser();
+    window.addEventListener("meltalcare-session-updated", syncCurrentUser);
+
+    return () => window.removeEventListener("meltalcare-session-updated", syncCurrentUser);
+  }, [router]);
+
+  useEffect(() => {
+    apiRequest<{ data: DashboardData }>("/admin/dashboard")
+      .then((response) => {
+        setRecentTests(response.data.recent_tests);
+        setNotificationRead(false);
+      })
+      .catch(() => setRecentTests([]));
+  }, []);
+
+  useEffect(() => {
+    const updateDate = () => setJakartaDate(new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Jakarta",
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).format(new Date()));
+
+    updateDate();
+    const timer = window.setInterval(updateDate, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Close profile menu when clicking outside
   useEffect(() => {
@@ -51,6 +107,25 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target as Node)) {
+        setNotificationOpen(false);
+      }
+    };
+
+    if (notificationOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [notificationOpen]);
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -93,10 +168,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               className="w-9 h-9 rounded-lg flex items-center justify-center text-sm"
               style={{ background: "linear-gradient(135deg, #F59E0B, #EF4444)", fontWeight: 700, color: "white" }}
             >
-              AD
+              {getInitials(currentUser?.name)}
             </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-white text-sm truncate" style={{ fontWeight: 600 }}>Administrator</p>
+              <p className="text-white text-sm truncate" style={{ fontWeight: 600 }}>{currentUser?.name || "Administrator"}</p>
               <div className="flex items-center gap-1">
                 <Shield className="w-3 h-3 text-amber-300" />
                 <p className="text-amber-300 text-xs" style={{ fontWeight: 500 }}>Super Admin</p>
@@ -227,20 +302,82 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               {menuItems.find((m) => isActive(m.path))?.label || "Dashboard"}
             </h2>
             <p className="text-gray-400 text-xs" style={{ fontWeight: 400 }}>
-              Selasa, 03 Maret 2026
+              {jakartaDate || "Memuat tanggal..."}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <Bell className="w-5 h-5 text-gray-500" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
+            <div ref={notificationMenuRef} className="relative">
+              <button
+                onClick={() => {
+                  setNotificationOpen((open) => !open);
+                  setNotificationRead(true);
+                }}
+                className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Buka notifikasi admin"
+                aria-expanded={notificationOpen}
+              >
+                <Bell className="w-5 h-5 text-gray-500" />
+                {recentTests.length > 0 && !notificationRead && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+                )}
+              </button>
+
+              {notificationOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                    <h3 className="text-sm font-semibold text-gray-800">Notifikasi Admin</h3>
+                    <span className="text-xs text-gray-400">{recentTests.length} terbaru</span>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto">
+                    {recentTests.length === 0 ? (
+                      <p className="px-4 py-6 text-center text-sm text-gray-400">Belum ada notifikasi.</p>
+                    ) : recentTests.slice(0, 5).map((test) => (
+                      <button
+                        key={test.id}
+                        onClick={() => {
+                          setNotificationOpen(false);
+                          router.push("/admin/history");
+                        }}
+                        className="flex w-full items-start gap-3 border-b border-gray-50 px-4 py-3 text-left transition-colors last:border-0 hover:bg-blue-50"
+                      >
+                        <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${test.category === "Stres Berat" ? "bg-red-500" : test.category === "Stres Ringan" ? "bg-amber-500" : "bg-emerald-500"}`} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-800">{test.student?.name || test.student?.user?.name || "Mahasiswa"}</p>
+                          <p className="mt-0.5 text-xs text-gray-600">{test.category} · Skor {test.score}/{test.max_score}</p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            {new Date(test.tested_at).toLocaleString("id-ID", {
+                              timeZone: "Asia/Jakarta",
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {recentTests.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setNotificationOpen(false);
+                        router.push("/admin/history");
+                      }}
+                      className="w-full border-t border-gray-100 px-4 py-3 text-center text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                    >
+                      Lihat semua riwayat tes
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center text-xs"
               style={{ background: "linear-gradient(135deg, #F59E0B, #EF4444)", fontWeight: 700, color: "white" }}
             >
-              AD
+              {getInitials(currentUser?.name)}
             </div>
           </div>
         </header>

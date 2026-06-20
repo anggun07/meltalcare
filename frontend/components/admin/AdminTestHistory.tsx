@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Filter, ChevronLeft, ChevronRight, X, Clock, BarChart2, Eye } from "lucide-react";
-import { testHistory, TestRecord } from "../shared/mockData";
 import { StressBadge } from "../shared/StressBadge";
+import { apiRequest } from "@/lib/api";
+import { MentalHealthTestApi, TestRecord, toTestRecord } from "@/lib/mental-health";
 
 interface DetailModalProps {
   test: TestRecord;
@@ -80,12 +81,30 @@ function DetailModal({ test, onClose }: DetailModalProps) {
 }
 
 export function AdminTestHistory() {
+  const [testHistory, setTestHistory] = useState<TestRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterDate, setFilterDate] = useState("");
   const [page, setPage] = useState(1);
   const [selectedTest, setSelectedTest] = useState<TestRecord | null>(null);
   const perPage = 6;
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const response = await apiRequest<{ data: MentalHealthTestApi[] }>("/mental-health-tests");
+        setTestHistory(response.data.map(toTestRecord));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gagal mengambil riwayat tes.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadHistory();
+  }, []);
 
   const filtered = testHistory.filter((t) => {
     const matchSearch = t.studentName?.toLowerCase().includes(search.toLowerCase()) ?? true;
@@ -110,6 +129,8 @@ export function AdminTestHistory() {
         <h2 className="text-gray-800 text-xl" style={{ fontWeight: 700 }}>Riwayat Tes — Admin</h2>
         <p className="text-gray-400 text-sm mt-0.5" style={{ fontWeight: 400 }}>Semua data hasil tes mahasiswa</p>
       </div>
+
+      {error && <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">{error}</div>}
 
       {/* Mini Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -186,7 +207,11 @@ export function AdminTestHistory() {
               </tr>
             </thead>
             <tbody>
-              {paginated.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-gray-400">Memuat riwayat tes...</td>
+                </tr>
+              ) : paginated.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-12 text-gray-400">
                     <BarChart2 className="w-10 h-10 mx-auto mb-2 text-gray-200" />

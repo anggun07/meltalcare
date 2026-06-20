@@ -1,15 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, Activity, ArrowRight,
+  Users, CheckCircle, AlertTriangle, XCircle, TrendingUp, ArrowRight,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { stressDistribution, monthlyTrendData, testHistory } from "../shared/mockData";
 import { StressBadge } from "../shared/StressBadge";
+import { apiRequest } from "@/lib/api";
+import { DashboardData, toTestRecord } from "@/lib/mental-health";
 
 const RADIAN = Math.PI / 180;
 const CustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) => {
@@ -25,12 +27,50 @@ const CustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, n
 
 export function AdminDashboard() {
   const router = useRouter();
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const response = await apiRequest<{ data: DashboardData }>("/admin/dashboard");
+        setDashboard(response.data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gagal mengambil data dashboard.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboard();
+  }, []);
+
+  const colors: Record<string, string> = {
+    "Tidak Stres": "#10B981",
+    "Stres Ringan": "#F59E0B",
+    "Stres Berat": "#EF4444",
+  };
+  const stressDistribution = (dashboard?.distribution || []).map((item) => ({
+    name: item.category,
+    value: item.percentage,
+    count: item.count,
+    color: colors[item.category],
+  }));
+  const monthlyTrendData = (dashboard?.monthly_trend || []).map((item) => ({
+    month: item.month,
+    tidakStres: item.tidak_stres,
+    stresRingan: item.stres_ringan,
+    stresBerat: item.stres_berat,
+  }));
+  const testHistory = (dashboard?.recent_tests || []).map(toTestRecord);
+  const distributionByCategory = Object.fromEntries((dashboard?.distribution || []).map((item) => [item.category, item]));
 
   const statCards = [
     {
       label: "Total Mahasiswa",
-      value: "8",
-      sub: "+2 bulan ini",
+      value: String(dashboard?.total_students || 0),
+      sub: "Akun mahasiswa terdaftar",
       icon: Users,
       color: "#1E6CB5",
       bg: "#EFF6FF",
@@ -38,8 +78,8 @@ export function AdminDashboard() {
     },
     {
       label: "Tidak Stres",
-      value: "45%",
-      sub: "4 mahasiswa",
+      value: `${distributionByCategory["Tidak Stres"]?.percentage || 0}%`,
+      sub: `${distributionByCategory["Tidak Stres"]?.count || 0} mahasiswa`,
       icon: CheckCircle,
       color: "#10B981",
       bg: "#ECFDF5",
@@ -47,8 +87,8 @@ export function AdminDashboard() {
     },
     {
       label: "Stres Ringan",
-      value: "35%",
-      sub: "3 mahasiswa",
+      value: `${distributionByCategory["Stres Ringan"]?.percentage || 0}%`,
+      sub: `${distributionByCategory["Stres Ringan"]?.count || 0} mahasiswa`,
       icon: AlertTriangle,
       color: "#F59E0B",
       bg: "#FFFBEB",
@@ -56,8 +96,8 @@ export function AdminDashboard() {
     },
     {
       label: "Stres Berat",
-      value: "20%",
-      sub: "1 mahasiswa",
+      value: `${distributionByCategory["Stres Berat"]?.percentage || 0}%`,
+      sub: `${distributionByCategory["Stres Berat"]?.count || 0} mahasiswa`,
       icon: XCircle,
       color: "#EF4444",
       bg: "#FEF2F2",
@@ -83,22 +123,25 @@ export function AdminDashboard() {
           </div>
           <div className="flex gap-4">
             <div className="text-center">
-              <p className="text-3xl text-white" style={{ fontWeight: 800 }}>8</p>
+              <p className="text-3xl text-white" style={{ fontWeight: 800 }}>{dashboard?.total_students || 0}</p>
               <p className="text-blue-200 text-xs" style={{ fontWeight: 400 }}>Mahasiswa</p>
             </div>
             <div className="w-px bg-white/20" />
             <div className="text-center">
-              <p className="text-3xl text-white" style={{ fontWeight: 800 }}>12</p>
+              <p className="text-3xl text-white" style={{ fontWeight: 800 }}>{dashboard?.tests_this_month || 0}</p>
               <p className="text-blue-200 text-xs" style={{ fontWeight: 400 }}>Tes Bulan Ini</p>
             </div>
             <div className="w-px bg-white/20" />
             <div className="text-center">
-              <p className="text-3xl text-white" style={{ fontWeight: 800 }}>8</p>
-              <p className="text-blue-200 text-xs" style={{ fontWeight: 400 }}>Sensor Aktif</p>
+              <p className="text-3xl text-white" style={{ fontWeight: 800 }}>{dashboard?.total_tests || 0}</p>
+              <p className="text-blue-200 text-xs" style={{ fontWeight: 400 }}>Total Tes</p>
             </div>
           </div>
         </div>
       </div>
+
+      {error && <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">{error}</div>}
+      {loading && <div className="px-4 py-3 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 text-sm">Memuat data dashboard...</div>}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -214,7 +257,7 @@ export function AdminDashboard() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50">
-                {["Mahasiswa", "Tanggal Tes", "Skor", "Kategori", "BPM"].map((h) => (
+                {["Mahasiswa", "Tanggal Tes", "Skor", "Kategori", "NIM"].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-xs text-gray-500 uppercase tracking-wide" style={{ fontWeight: 600 }}>
                     {h}
                   </th>
@@ -222,7 +265,11 @@ export function AdminDashboard() {
               </tr>
             </thead>
             <tbody>
-              {testHistory.slice(0, 6).map((record, idx) => (
+              {testHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-10 text-gray-400">Belum ada hasil tes mahasiswa.</td>
+                </tr>
+              ) : testHistory.slice(0, 6).map((record, idx) => (
                 <tr key={record.id} className={`border-t border-gray-50 hover:bg-blue-50/20 transition-colors ${idx % 2 === 0 ? "" : "bg-gray-50/30"}`}>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2.5">
@@ -248,12 +295,7 @@ export function AdminDashboard() {
                     <StressBadge category={record.category} size="sm" />
                   </td>
                   <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1.5">
-                      <Activity className="w-3 h-3 text-blue-400" />
-                      <span className="text-sm text-gray-600" style={{ fontWeight: 500 }}>
-                        {[72, 95, 112, 68, 88, 75][idx]} BPM
-                      </span>
-                    </div>
+                    <span className="text-sm text-gray-600" style={{ fontWeight: 500 }}>{record.nim || "-"}</span>
                   </td>
                 </tr>
               ))}

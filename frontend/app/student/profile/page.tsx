@@ -1,7 +1,7 @@
 "use client";
 
-import { StudentProfile } from "../../../components/student/StudentProfile";
+import { StudentProfileConnected } from "../../../components/student/StudentProfileConnected";
 
 export default function Page() {
-  return <StudentProfile />;
+  return <StudentProfileConnected />;
 }

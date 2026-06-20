@@ -1,7 +1,7 @@
 "use client";
 
-import { StudentSettings } from "../../../components/student/StudentSettings";
+import { StudentSettingsConnected } from "../../../components/student/StudentSettingsConnected";
 
 export default function Page() {
-  return <StudentSettings />;
+  return <StudentSettingsConnected />;
 }

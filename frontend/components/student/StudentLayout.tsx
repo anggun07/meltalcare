@@ -15,6 +15,9 @@ import {
   ChevronRight,
   Heart,
 } from "lucide-react";
+import { clearSession, getCurrentUser, getInitials, CurrentUser } from "@/lib/auth";
+import { apiRequest } from "@/lib/api";
+import { MentalHealthTestApi, StressLevel } from "@/lib/mental-health";
 const logoImg = "/logo.svg";
 
 const menuItems = [
@@ -29,10 +32,82 @@ export function StudentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationRead, setNotificationRead] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [latestMentalStatus, setLatestMentalStatus] = useState<StressLevel | null>(null);
+  const [latestMentalTest, setLatestMentalTest] = useState<MentalHealthTestApi | null>(null);
+  const [jakartaTime, setJakartaTime] = useState("");
+  const [jakartaDate, setJakartaDate] = useState("");
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
 
-  const handleLogout = () => router.push("/");
+  const handleLogout = () => {
+    clearSession();
+    router.push("/login");
+  };
   const isActive = (path: string) => pathname === path || (pathname === "/student" && path === "/student/dashboard");
+
+  useEffect(() => {
+    const syncCurrentUser = () => {
+      const user = getCurrentUser();
+
+      if (!user || user.role !== "mahasiswa") {
+        clearSession();
+        router.replace("/login");
+        return;
+      }
+
+      setCurrentUser(user);
+      setCheckingAuth(false);
+    };
+
+    syncCurrentUser();
+    window.addEventListener("meltalcare-session-updated", syncCurrentUser);
+
+    return () => window.removeEventListener("meltalcare-session-updated", syncCurrentUser);
+  }, [router]);
+
+  useEffect(() => {
+    const studentId = currentUser?.student?.id;
+    if (!studentId) return;
+
+    apiRequest<{ data: MentalHealthTestApi[] }>(`/students/${studentId}/mental-health-tests`)
+      .then((response) => {
+        const latestTest = response.data[0] || null;
+        setLatestMentalTest(latestTest);
+        setLatestMentalStatus(latestTest?.category || null);
+        setNotificationRead(false);
+      })
+      .catch(() => {
+        setLatestMentalTest(null);
+        setLatestMentalStatus(null);
+      });
+  }, [currentUser?.student?.id]);
+
+  useEffect(() => {
+    const updateJakartaTime = () => {
+      setJakartaTime(new Intl.DateTimeFormat("id-ID", {
+        timeZone: "Asia/Jakarta",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date()).replace(".", ":"));
+      setJakartaDate(new Intl.DateTimeFormat("id-ID", {
+        timeZone: "Asia/Jakarta",
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      }).format(new Date()));
+    };
+
+    updateJakartaTime();
+    const timer = window.setInterval(updateJakartaTime, 60_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Close profile menu when clicking outside
   useEffect(() => {
@@ -50,6 +125,25 @@ export function StudentLayout({ children }: { children: React.ReactNode }) {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target as Node)) {
+        setNotificationOpen(false);
+      }
+    };
+
+    if (notificationOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [notificationOpen]);
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-gray-50">
@@ -91,11 +185,11 @@ export function StudentLayout({ children }: { children: React.ReactNode }) {
           >
             <div className="w-9 h-9 rounded-lg flex items-center justify-center text-sm"
               style={{ background: "linear-gradient(135deg, #29ABE2, #4FC3F7)", fontWeight: 700, color: "white" }}>
-              AF
+              {getInitials(currentUser?.name)}
             </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-white text-sm truncate" style={{ fontWeight: 600 }}>Ahmad Fauzi</p>
-              <p className="text-blue-200 text-xs truncate" style={{ fontWeight: 400 }}>NIM: 20210001</p>
+              <p className="text-white text-sm truncate" style={{ fontWeight: 600 }}>{currentUser?.name}</p>
+              <p className="text-blue-200 text-xs truncate" style={{ fontWeight: 400 }}>NIM: {currentUser?.student?.nim || "-"}</p>
             </div>
             <ChevronRight className={`w-4 h-4 text-blue-200 transition-transform duration-200 ${profileMenuOpen ? 'rotate-90' : ''}`} />
           </button>
@@ -165,10 +259,14 @@ export function StudentLayout({ children }: { children: React.ReactNode }) {
             <span className="text-white text-xs" style={{ fontWeight: 600 }}>Status Terkini</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-emerald-300 text-xs" style={{ fontWeight: 500 }}>Tidak Stres</span>
+            <span className={`w-2 h-2 rounded-full ${latestMentalStatus === "Stres Berat" ? "bg-red-400" : latestMentalStatus === "Stres Ringan" ? "bg-amber-400" : latestMentalStatus ? "bg-emerald-400" : "bg-gray-300"}`} />
+            <span className="text-white text-xs" style={{ fontWeight: 500 }}>
+              {latestMentalStatus || "Belum Ada Tes"}
+            </span>
           </div>
-          <p className="text-blue-300 text-xs mt-1" style={{ fontWeight: 400 }}>BPM: 72 | Hari ini 15:42</p>
+          <p className="text-blue-300 text-xs mt-1" style={{ fontWeight: 400 }}>
+            BPM: 72 | Hari ini {jakartaTime || "--:--"}
+          </p>
         </div>
 
         {/* Logout */}
@@ -200,18 +298,67 @@ export function StudentLayout({ children }: { children: React.ReactNode }) {
               {menuItems.find((m) => isActive(m.path))?.label || "Dashboard"}
             </h2>
             <p className="text-gray-400 text-xs" style={{ fontWeight: 400 }}>
-              Selasa, 03 Maret 2026
+              {jakartaDate || "Memuat tanggal..."}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <Bell className="w-5 h-5 text-gray-500" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
+            <div ref={notificationMenuRef} className="relative">
+              <button
+                onClick={() => {
+                  setNotificationOpen((open) => !open);
+                  setNotificationRead(true);
+                }}
+                className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Buka notifikasi"
+                aria-expanded={notificationOpen}
+              >
+                <Bell className="w-5 h-5 text-gray-500" />
+                {latestMentalTest && !notificationRead && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+                )}
+              </button>
+
+              {notificationOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+                  <div className="border-b border-gray-100 px-4 py-3">
+                    <h3 className="text-sm font-semibold text-gray-800">Notifikasi</h3>
+                  </div>
+                  {latestMentalTest ? (
+                    <button
+                      onClick={() => {
+                        setNotificationOpen(false);
+                        router.push("/student/history");
+                      }}
+                      className="w-full px-4 py-4 text-left transition-colors hover:bg-blue-50"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={`mt-1.5 h-2 w-2 flex-shrink-0 rounded-full ${latestMentalStatus === "Stres Berat" ? "bg-red-500" : latestMentalStatus === "Stres Ringan" ? "bg-amber-500" : "bg-emerald-500"}`} />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">Hasil tes kesehatan mental</p>
+                          <p className="mt-1 text-xs text-gray-600">
+                            Hasil terbaru: {latestMentalTest.category} dengan skor {latestMentalTest.score}/{latestMentalTest.max_score}.
+                          </p>
+                          <p className="mt-2 text-xs text-gray-400">
+                            {new Date(latestMentalTest.tested_at).toLocaleDateString("id-ID", {
+                              timeZone: "Asia/Jakarta",
+                              day: "2-digit",
+                              month: "long",
+                              year: "numeric",
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  ) : (
+                    <p className="px-4 py-6 text-center text-sm text-gray-400">Belum ada notifikasi.</p>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs"
               style={{ background: "linear-gradient(135deg, #1E6CB5, #29ABE2)", fontWeight: 700, color: "white" }}>
-              AF
+              {getInitials(currentUser?.name)}
             </div>
           </div>
         </header>

@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, AlertTriangle, XCircle, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
-import { mentalHealthQuestions, getStressCategory, StressLevel } from "../shared/mockData";
+import { mentalHealthQuestions } from "../shared/mockData";
+import { apiRequest } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
+import { StressLevel } from "@/lib/mental-health";
 
 export function MentalHealthTest() {
   const router = useRouter();
@@ -11,6 +14,9 @@ export function MentalHealthTest() {
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<{ score: number; category: StressLevel } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [testedAt, setTestedAt] = useState("");
 
   const totalQ = mentalHealthQuestions.length;
   const progress = ((currentQ) / totalQ) * 100;
@@ -29,13 +35,37 @@ export function MentalHealthTest() {
     if (currentQ > 0) setCurrentQ((prev) => prev - 1);
   };
 
-  const handleSubmit = () => {
-    const total = Object.values(answers).reduce((a, b) => a + b, 0);
-    const maxScore = totalQ * 3;
-    const score = Math.round((total / maxScore) * 42);
-    const category = getStressCategory(score);
-    setResult({ score, category });
-    setSubmitted(true);
+  const handleSubmit = async () => {
+    const currentUser = getCurrentUser();
+    const studentId = currentUser?.student?.id;
+
+    if (!studentId) {
+      setError("Data mahasiswa tidak ditemukan. Silakan login ulang.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const response = await apiRequest<{
+        data: { score: number; category: StressLevel; tested_at: string };
+      }>("/mental-health-tests", {
+        method: "POST",
+        body: {
+          student_id: studentId,
+          answers: mentalHealthQuestions.map((question) => answers[question.id]),
+        },
+      });
+
+      setResult({ score: response.data.score, category: response.data.category });
+      setTestedAt(response.data.tested_at);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Hasil tes gagal disimpan.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleRetry = () => {
@@ -43,6 +73,8 @@ export function MentalHealthTest() {
     setAnswers({});
     setSubmitted(false);
     setResult(null);
+    setTestedAt("");
+    setError("");
   };
 
   if (submitted && result) {
@@ -91,7 +123,9 @@ export function MentalHealthTest() {
       <div className="max-w-lg mx-auto">
         <div className="text-center mb-6">
           <h2 className="text-gray-800 text-xl" style={{ fontWeight: 700 }}>Hasil Tes Kesehatan Mental</h2>
-          <p className="text-gray-400 text-sm mt-1" style={{ fontWeight: 400 }}>03 Maret 2026</p>
+          <p className="text-gray-400 text-sm mt-1" style={{ fontWeight: 400 }}>
+            {new Date(testedAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+          </p>
         </div>
 
         <div
@@ -282,6 +316,11 @@ export function MentalHealthTest() {
       </div>
 
       {/* Navigation */}
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <button
           onClick={handlePrev}
@@ -297,7 +336,7 @@ export function MentalHealthTest() {
         {currentQ === totalQ - 1 ? (
           <button
             onClick={handleSubmit}
-            disabled={answeredCount < totalQ}
+            disabled={answeredCount < totalQ || submitting}
             className="flex items-center gap-2 px-6 py-3 rounded-xl text-white text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
               background: "linear-gradient(135deg, #1A3A8F, #1E6CB5)",
@@ -306,7 +345,7 @@ export function MentalHealthTest() {
             }}
           >
             <CheckCircle className="w-4 h-4" />
-            Kirim Hasil
+            {submitting ? "Menyimpan..." : "Kirim Hasil"}
             {answeredCount < totalQ && (
               <span className="text-xs opacity-70">({totalQ - answeredCount} belum)</span>
             )}

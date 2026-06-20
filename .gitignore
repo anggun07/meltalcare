@@ -1,17 +1,23 @@
-# dependencies
-/node_modules
-/.pnp
+﻿# dependencies
+node_modules/
+.pnp/
 .pnp.js
+vendor/
 
 # testing
-/coverage
+coverage/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
+
+# laravel / php
+backend/.env
+backend/storage/*.key
 
 # production
-/build
+build/
+dist/
 
 # misc
 .DS_Store
@@ -30,10 +36,10 @@ yarn-error.log*
 .env.production.local
 
 # vercel
-.vercel
+.vercel/
 
 # IDE
-.idea
-.vscode
+.idea/
+.vscode/
 *.swp
 *.swo

@@ -44,11 +44,9 @@ const TwitterIcon = ({ className }: { className?: string }) => (
 );
 
 const heroStudentImg =
-  "https://images.unsplash.com/photo-1600437493529-cbab154790be?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzdHVkZW50JTIwbWVudGFsJTIwaGVhbHRoJTIwdGVjaG5vbG9neSUyMG1vbml0b3Jpbmd8ZW58MXx8fHwxNzcyNjE4MzkwfDA&ixlib=rb-4.1.0&q=80&w=1080";
-const iotImg =
-  "https://images.unsplash.com/photo-1640901764423-3195244b8e77?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxJb1QlMjBzbWFydCUyMGRldmljZSUyMHdlYXJhYmxlJTIwaGVhbHRoJTIwc2Vuc29yfGVufDF8fHx8MTc3MjYxODM5MHww&ixlib=rb-4.1.0&q=80&w=1080";
-const campusImg =
-  "https://images.unsplash.com/photo-1620829813573-7c9e1877706f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1bml2ZXJzaXR5JTIwc3R1ZGVudHMlMjBzdHVkeWluZyUyMGNhbXB1c3xlbnwxfHx8fDE3NzI2MTI5Mjh8MA&ixlib=rb-4.1.0&q=80&w=1080";
+  "/images/landing-hero.svg";
+const iotImg = "/images/iot-device.svg";
+const campusImg = "/images/campus-students.svg";
 
 const navLinks = [
   { label: "Beranda", href: "#beranda" },

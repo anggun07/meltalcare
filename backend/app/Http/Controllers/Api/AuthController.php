@@ -19,7 +19,13 @@ class AuthController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
             'role' => ['nullable', Rule::in(['admin', 'mahasiswa'])],
-            'nim' => ['required_if:role,mahasiswa', 'nullable', 'string', 'max:30', 'unique:students,nim'],
+            'nim' => ['required_if:role,mahasiswa', 'nullable', 'digits_between:8,12', 'unique:students,nim'],
+        ], [
+            'email.unique' => 'Email sudah terdaftar.',
+            'password.min' => 'Password minimal 6 karakter.',
+            'nim.required_if' => 'NIM wajib diisi untuk mahasiswa.',
+            'nim.digits_between' => 'NIM harus berupa angka 8 sampai 12 digit.',
+            'nim.unique' => 'NIM sudah terdaftar.',
         ]);
 
         $role = $validated['role'] ?? 'mahasiswa';
@@ -47,6 +53,13 @@ class AuthController extends Controller
             'message' => 'Registrasi berhasil',
             'data' => $user,
         ], 201);
+    }
+
+    public function users()
+    {
+        return response()->json([
+            'data' => User::with('student')->latest()->get(),
+        ]);
     }
 
     public function login(Request $request)

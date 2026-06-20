@@ -1,7 +1,7 @@
 "use client";
 
-import { AdminSettings } from "../../../components/admin/AdminSettings";
+import { AdminSettingsConnected } from "../../../components/admin/AdminSettingsConnected";
 
 export default function Page() {
-  return <AdminSettings />;
+  return <AdminSettingsConnected />;
 }
